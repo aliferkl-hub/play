@@ -21,6 +21,7 @@ import { BranchesView } from './components/branches/BranchesView.tsx';
 import { ReportsView } from './components/reports/ReportsView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
 import { AuditView } from './components/audit/AuditView.tsx';
+import { SigmaView } from './components/sigma/SigmaView.tsx';
 import {
   Customer,
   Plan,
@@ -216,6 +217,10 @@ const MainLayout: React.FC = () => {
               branches={branches}
               onNavigate={tab => setCurrentTab(tab)}
             />
+          )}
+
+          {currentTab === 'sigma' && (
+            <SigmaView companies={companies} />
           )}
 
           {currentTab === 'companies' && (

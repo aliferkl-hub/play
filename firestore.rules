@@ -125,9 +125,14 @@ service cloud.firestore {
       allow write: if isMasterOwner();
     }
 
-    // Message logs
-    match /message_logs/{logId} {
-      allow read, write: if isStaff();
+    // Sigma IPTV test requests & company settings
+    match /sigma_test_requests/{testId} {
+      allow read, write: if isStaff() || isMasterOwner();
+    }
+
+    match /sigma_company_settings/{settingId} {
+      allow read: if isStaff() || isMasterOwner();
+      allow write: if isMasterOwner();
     }
 
     // Audit logs - write append-only for staff, read for master owner

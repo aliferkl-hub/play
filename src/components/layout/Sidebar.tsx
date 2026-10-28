@@ -22,12 +22,14 @@ import {
   Shield,
   Zap,
   Ticket,
+  Tv,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { PermissionKey } from '../../types/index.ts';
 
 export type NavTab =
   | 'dashboard'
+  | 'sigma'
   | 'companies'
   | 'invites'
   | 'branches'
@@ -74,6 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems: NavItemConfig[] = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { key: 'sigma', label: 'Testes Sigma / IPTV', icon: Tv },
     { key: 'companies', label: 'Empresas Parceiras', icon: Building2, requiredPermission: 'gerenciar_empresas', masterOnly: true },
     { key: 'invites', label: 'Convites de Empresas', icon: Ticket, requiredPermission: 'gerenciar_empresas', masterOnly: true },
     { key: 'branches', label: 'Filiais & Unidades', icon: GitBranch, requiredPermission: 'gerenciar_filiais' },

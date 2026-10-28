@@ -11,7 +11,7 @@ export type UserRole =
   | 'CONSULTA'
   | 'EMPLOYEE';
 
-export type UserStatus = 'ativo' | 'inativo' | 'suspenso';
+export type UserStatus = 'ativo' | 'inativo' | 'suspenso' | 'pendente';
 
 export type PermissionKey =
   | 'consultar_clientes'
@@ -485,4 +485,122 @@ export interface MasterOwnerCredentials {
   configuredAt?: string;
   twoFactorEnabled?: boolean;
   securityAnswerHash?: string;
+}
+
+// ==========================================
+// SIGMA / ATMOS RESELLER API INTEGRATION
+// ==========================================
+
+export type SigmaIntegrationStatus = 'nao_configurada' | 'configurada' | 'erro' | 'indisponivel';
+
+export interface SigmaServer {
+  id: string;
+  name: string;
+  type?: string;
+  status: string;
+  timezone?: string | null;
+  connection_type?: string | null;
+  has_default_customer_password?: boolean;
+  will_count_membership?: 'YES' | 'NO' | null;
+  is_isplock?: 'YES' | 'NO' | null;
+  cost_per_customer?: any;
+  max_customers?: number | null;
+  max_connections?: number | null;
+  api_version?: string | null;
+}
+
+export interface SigmaPackage {
+  id: string;
+  server_id: string;
+  server?: string | null;
+  name: string;
+  status: string;
+  is_trial?: 'YES' | 'NO' | null;
+  is_adult?: boolean;
+  plan_price?: number;
+  credits?: number;
+  duration?: number;
+  duration_in?: string;
+  connections?: number;
+}
+
+export interface SigmaConfig {
+  id?: string;
+  status: SigmaIntegrationStatus;
+  hasToken: boolean;
+  baseUrl: string;
+  requiredScopes: string[];
+  lastCheckedAt?: string;
+  lastError?: string;
+  defaultServerId?: string;
+  defaultServerName?: string;
+  defaultPackageId?: string;
+  defaultPackageName?: string;
+  allowedTrialHours: number[];
+  defaultTrialHours: number;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface SigmaCompanySettings {
+  companyId: string;
+  companyName: string;
+  autoApproval: boolean; // true = Modo A (Geração Automática); false = Modo B (Exige Aprovação)
+  maxDailyTests: number;
+  maxMonthlyTests: number;
+  allowedServerIds?: string[];
+  allowedPackageIds?: string[];
+  allowedTrialHours?: number[];
+  enabled: boolean;
+  notes?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export type SigmaApprovalStatus = 'auto_aprovado' | 'pendente_aprovacao' | 'aprovado' | 'rejeitado';
+export type SigmaExternalStatus = 'pendente' | 'processando' | 'criado' | 'erro' | 'resultado_desconhecido';
+
+export interface SigmaTestRequest {
+  id: string;
+  idempotencyKey: string;
+  companyId: string;
+  companyName: string;
+  requestedByUserId: string;
+  requestedByUserEmail: string;
+  requestedByUserName: string;
+  clientName: string;
+  clientWhatsApp: string;
+  clientEmail?: string;
+  clientNotes?: string;
+  serverId: string;
+  serverName: string;
+  packageId: string;
+  packageName: string;
+  trialHours: number;
+  approvalStatus: SigmaApprovalStatus;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  integrationStatus: SigmaExternalStatus;
+  externalCustomerId?: string;
+  externalUsername?: string;
+  externalPassword?: string;
+  externalExpiresAt?: string;
+  externalExpiresAtTz?: string;
+  externalM3uUrl?: string;
+  externalM3uShortUrl?: string;
+  externalPlaylist?: string;
+  errorMessage?: string;
+  lastAttemptAt?: string;
+  retryCount?: number;
+  requestedAt: string;
+  createdAt?: string;
+  expiresAt?: string;
+  reconciled?: boolean;
+  auditHistory: {
+    timestamp: string;
+    action: string;
+    user: string;
+    details?: string;
+  }[];
 }

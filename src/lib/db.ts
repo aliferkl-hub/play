@@ -42,9 +42,24 @@ import {
   InviteStatus,
   InviteType,
   InviteApprovalStatus,
+  SigmaConfig,
+  SigmaCompanySettings,
+  SigmaTestRequest,
+  SigmaServer,
+  SigmaPackage,
 } from '../types/index.ts';
 import { calculateNextDueDate, getDaysDiff, getReferencePeriod, getTodaySaoPaulo } from './date.ts';
 import { generateSalt, hashPassword, verifyPassword, generateInviteToken, generateSecureCompanyInviteCode } from './crypto.ts';
+
+export const DEFAULT_SIGMA_CONFIG: SigmaConfig = {
+  id: 'general',
+  status: 'nao_configurada',
+  hasToken: false,
+  baseUrl: 'https://atmos.panelbr.site/api/reseller-api/v1',
+  requiredScopes: ['servers.read', 'packages.read', 'customers.create'],
+  allowedTrialHours: [1, 2, 4, 6],
+  defaultTrialHours: 2,
+};
 
 // Helper to normalize email as valid Firestore document ID
 export function normalizeEmailKey(email: string): string {
@@ -2834,5 +2849,222 @@ export class DatabaseService {
       createdAt: '2026-02-01',
     };
     await this.saveContract(sampleContract, userEmail);
+  }
+
+  // ==========================================
+  // SIGMA INTEGRATION - DB OPERATIONS
+  // ==========================================
+
+  static async getSigmaConfig(): Promise<SigmaConfig> {
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'sigma_config'));
+      if (snap.exists()) {
+        const data = snap.data() as SigmaConfig;
+        setLocalCache('sigma_config', data);
+        return data;
+      }
+    } catch (e) {
+      console.warn('Error reading sigma config from Firestore:', e);
+    }
+    return getLocalCache<SigmaConfig>('sigma_config', DEFAULT_SIGMA_CONFIG);
+  }
+
+  static async saveSigmaConfig(config: Partial<SigmaConfig>, userEmail: string): Promise<SigmaConfig> {
+    const current = await this.getSigmaConfig();
+    const updated: SigmaConfig = {
+      ...current,
+      ...config,
+      updatedAt: new Date().toISOString(),
+      updatedBy: userEmail,
+    };
+    setLocalCache('sigma_config', updated);
+
+    try {
+      await setDoc(doc(db, 'settings', 'sigma_config'), cleanForFirestore(updated));
+    } catch (e) {
+      console.warn('Error saving sigma config to Firestore:', e);
+    }
+
+    await this.logAudit(
+      userEmail,
+      'SIGMA_CONFIG_UPDATE',
+      'settings',
+      'sigma_config',
+      `Configurações da integração Sigma atualizadas por ${userEmail}`
+    );
+    return updated;
+  }
+
+  static async getEncryptedSigmaVault(): Promise<{ ciphertext: string; updatedAt: string } | null> {
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'sigma_vault'));
+      if (snap.exists()) {
+        return snap.data() as { ciphertext: string; updatedAt: string };
+      }
+    } catch (e) {
+      console.warn('Error reading sigma vault from Firestore:', e);
+    }
+    return getLocalCache<{ ciphertext: string; updatedAt: string } | null>('sigma_vault', null);
+  }
+
+  static async saveEncryptedSigmaVault(ciphertext: string, userEmail: string): Promise<void> {
+    const payload = { ciphertext, updatedAt: new Date().toISOString(), updatedBy: userEmail };
+    setLocalCache('sigma_vault', payload);
+    try {
+      await setDoc(doc(db, 'settings', 'sigma_vault'), cleanForFirestore(payload));
+    } catch (e) {
+      console.warn('Error saving sigma vault to Firestore:', e);
+    }
+    await this.logAudit(
+      userEmail,
+      'SIGMA_TOKEN_VAULT_SAVED',
+      'settings',
+      'sigma_vault',
+      'Credencial da API Sigma armazenada de forma segura com criptografia pelo Master Owner'
+    );
+  }
+
+  static async clearEncryptedSigmaVault(userEmail: string): Promise<void> {
+    setLocalCache('sigma_vault', null);
+    try {
+      await deleteDoc(doc(db, 'settings', 'sigma_vault'));
+    } catch (e) {
+      console.warn('Error removing sigma vault from Firestore:', e);
+    }
+    await this.logAudit(
+      userEmail,
+      'SIGMA_TOKEN_VAULT_CLEARED',
+      'settings',
+      'sigma_vault',
+      'Credencial da API Sigma removida pelo Master Owner'
+    );
+  }
+
+  static async getSigmaCompanySettings(companyId?: string): Promise<SigmaCompanySettings[]> {
+    let settingsList: SigmaCompanySettings[] = [];
+    try {
+      const snap = await getDocs(collection(db, 'sigma_company_settings'));
+      if (!snap.empty) {
+        settingsList = snap.docs.map(d => d.data() as SigmaCompanySettings);
+        setLocalCache('sigma_company_settings', settingsList);
+      }
+    } catch (e) {
+      console.warn('Error reading sigma company settings from Firestore:', e);
+    }
+
+    if (settingsList.length === 0) {
+      settingsList = getLocalCache<SigmaCompanySettings[]>('sigma_company_settings', []);
+    }
+
+    if (companyId) {
+      return settingsList.filter(s => s.companyId === companyId);
+    }
+    return settingsList;
+  }
+
+  static async getSingleSigmaCompanySetting(companyId: string): Promise<SigmaCompanySettings | null> {
+    const list = await this.getSigmaCompanySettings(companyId);
+    return list[0] || null;
+  }
+
+  static async saveSigmaCompanySettings(settings: SigmaCompanySettings, userEmail: string): Promise<void> {
+    const list = await this.getSigmaCompanySettings();
+    const idx = list.findIndex(s => s.companyId === settings.companyId);
+    const updated = {
+      ...settings,
+      updatedAt: new Date().toISOString(),
+      updatedBy: userEmail,
+    };
+
+    if (idx >= 0) {
+      list[idx] = updated;
+    } else {
+      list.push(updated);
+    }
+    setLocalCache('sigma_company_settings', list);
+
+    try {
+      await setDoc(doc(db, 'sigma_company_settings', settings.companyId), cleanForFirestore(updated));
+    } catch (e) {
+      console.warn('Error saving sigma company settings to Firestore:', e);
+    }
+
+    await this.logAudit(
+      userEmail,
+      'SIGMA_COMPANY_SETTINGS_UPDATE',
+      'companies',
+      settings.companyId,
+      `Regras e limites de testes Sigma atualizados para a empresa ${settings.companyName}: Modo ${settings.autoApproval ? 'Automático' : 'Aprovação Manual'}, Diário: ${settings.maxDailyTests}, Mensal: ${settings.maxMonthlyTests}`,
+      settings.companyId
+    );
+  }
+
+  static async getSigmaTestRequests(companyId?: string): Promise<SigmaTestRequest[]> {
+    let requests: SigmaTestRequest[] = [];
+    try {
+      const snap = await getDocs(collection(db, 'sigma_test_requests'));
+      if (!snap.empty) {
+        requests = snap.docs.map(d => d.data() as SigmaTestRequest);
+        setLocalCache('sigma_test_requests', requests);
+      }
+    } catch (e) {
+      console.warn('Error reading sigma test requests from Firestore:', e);
+    }
+
+    if (requests.length === 0) {
+      requests = getLocalCache<SigmaTestRequest[]>('sigma_test_requests', []);
+    }
+
+    // Sort newest first
+    requests.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+
+    if (companyId) {
+      return requests.filter(r => r.companyId === companyId);
+    }
+    return requests;
+  }
+
+  static async getSigmaTestRequestById(id: string): Promise<SigmaTestRequest | null> {
+    try {
+      const snap = await getDoc(doc(db, 'sigma_test_requests', id));
+      if (snap.exists()) {
+        return snap.data() as SigmaTestRequest;
+      }
+    } catch (e) {
+      console.warn('Error reading sigma test request by ID:', e);
+    }
+    const all = await this.getSigmaTestRequests();
+    return all.find(r => r.id === id) || null;
+  }
+
+  static async findSigmaTestRequestByIdempotencyKey(key: string): Promise<SigmaTestRequest | null> {
+    const all = await this.getSigmaTestRequests();
+    return all.find(r => r.idempotencyKey === key) || null;
+  }
+
+  static async saveSigmaTestRequest(req: SigmaTestRequest, userEmail: string): Promise<void> {
+    const list = await this.getSigmaTestRequests();
+    const idx = list.findIndex(r => r.id === req.id);
+    if (idx >= 0) {
+      list[idx] = req;
+    } else {
+      list.unshift(req);
+    }
+    setLocalCache('sigma_test_requests', list);
+
+    try {
+      await setDoc(doc(db, 'sigma_test_requests', req.id), cleanForFirestore(req));
+    } catch (e) {
+      console.warn('Error saving sigma test request to Firestore:', e);
+    }
+
+    await this.logAudit(
+      userEmail,
+      'SIGMA_TEST_REQUEST_SAVED',
+      'sigma_test_requests',
+      req.id,
+      `Solicitação de teste ${req.id} para cliente ${req.clientName}: Aprovação=${req.approvalStatus}, Integração=${req.integrationStatus}`,
+      req.companyId
+    );
   }
 }
